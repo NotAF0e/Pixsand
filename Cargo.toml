@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
-druid = "0.8.3"
+macroquad = "0.3.25"
+rayon = "1.7.0"
