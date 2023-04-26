@@ -223,42 +223,24 @@ async fn main() {
         let update_sim_time = &update_sim_time.elapsed().as_secs_f32().to_string();
 
         // Handle input events
-        if is_mouse_button_down(MouseButton::Left) {
+        if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
+            let tile_type = if is_mouse_button_down(MouseButton::Left) {
+                tile_type_selected.clone().unwrap()
+            } else {
+                TileType::Air
+            };
+
+            let brush_half_size = (brush_size / 2.0) as usize;
+
             for x_displace in 0..brush_size as usize {
                 for y_displace in 0..brush_size as usize {
-                    if let (Some(_x), Some(_y)) = (
-                        world.tiles.get(
-                            downscalled_mouse_x as usize + x_displace - (brush_size / 2.0) as usize,
-                        ),
-                        world.tiles.get(
-                            downscalled_mouse_y as usize + y_displace - (brush_size / 2.0) as usize,
-                        ),
-                    ) {
-                        world.tiles[downscalled_mouse_x as usize + x_displace
-                            - (brush_size / 2.0) as usize]
-                            [downscalled_mouse_y as usize + y_displace
-                                - (brush_size / 2.0) as usize]
-                            .filled = tile_type_selected.clone().unwrap();
-                    }
-                }
-            }
-        }
-        if is_mouse_button_down(MouseButton::Right) {
-            for x_displace in 0..brush_size as usize {
-                for y_displace in 0..brush_size as usize {
-                    if let (Some(_x), Some(_y)) = (
-                        world.tiles.get(
-                            downscalled_mouse_x as usize + x_displace - (brush_size / 2.0) as usize,
-                        ),
-                        world.tiles.get(
-                            downscalled_mouse_y as usize + y_displace - (brush_size / 2.0) as usize,
-                        ),
-                    ) {
-                        world.tiles[downscalled_mouse_x as usize + x_displace
-                            - (brush_size / 2.0) as usize]
-                            [downscalled_mouse_y as usize + y_displace
-                                - (brush_size / 2.0) as usize]
-                            .filled = TileType::Air;
+                    let x = downscalled_mouse_x as usize + x_displace - brush_half_size;
+                    let y = downscalled_mouse_y as usize + y_displace - brush_half_size;
+
+                    if let Some(row) = world.tiles.get_mut(x) {
+                        if let Some(tile) = row.get_mut(y) {
+                            tile.filled = tile_type;
+                        }
                     }
                 }
             }
