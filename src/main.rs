@@ -1,5 +1,6 @@
 use macroquad::prelude::*;
 
+use std::fmt;
 use std::time::*;
 
 #[derive(Clone, PartialEq)]
@@ -134,13 +135,29 @@ impl Tile {
         }
     }
 }
-
+enum Direction {
+    Left,
+    Right,
+    Down,
+    Up,
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TileType {
     Air,
     Sand,
     Water,
     Stone,
+}
+impl fmt::Display for TileType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let display = match self {
+            TileType::Air => "Air",
+            TileType::Sand => "Sand",
+            TileType::Water => "Water",
+            TileType::Stone => "Stone",
+        };
+        write!(f, "{}", display)
+    }
 }
 
 impl TileWorld {
@@ -185,7 +202,7 @@ async fn main() {
     let screen_width: usize = screen_width() as usize;
     let screen_height: usize = screen_height() as usize;
 
-    let mut tile_type_selected: Option<TileType> = Some(TileType::Sand);
+    let mut brush_type: Option<TileType> = Some(TileType::Sand);
     let mut brush_size = 5.0; // Must be odd
 
     let mut world = TileWorld {
@@ -225,7 +242,7 @@ async fn main() {
         // Handle input events
         if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
             let tile_type = if is_mouse_button_down(MouseButton::Left) {
-                tile_type_selected.clone().unwrap()
+                brush_type.clone().unwrap()
             } else {
                 TileType::Air
             };
@@ -245,8 +262,13 @@ async fn main() {
                 }
             }
         }
+        if mouse_wheel() > (0.0, 0.0) {
+            brush_size += 1.0;
+        } else if mouse_wheel() < (0.0, 0.0) && brush_size != 0.0 {
+            brush_size -= 1.0;
+        }
         if is_key_pressed(KeyCode::E) {
-            tile_type_selected = match tile_type_selected.unwrap() {
+            brush_type = match brush_type.unwrap() {
                 TileType::Air => None,
                 TileType::Sand => Some(TileType::Water),
                 TileType::Water => Some(TileType::Stone),
@@ -298,6 +320,20 @@ async fn main() {
             &("Draw texture: ".to_owned() + draw_texture_time),
             10.0,
             75.0,
+            25.0,
+            WHITE,
+        );
+        draw_text(
+            &("Brush selected: ".to_owned() + &brush_type.unwrap().to_string()),
+            10.0,
+            95.0,
+            25.0,
+            WHITE,
+        );
+        draw_text(
+            &("Brush size: ".to_owned() + &brush_size.to_string()),
+            10.0,
+            115.0,
             25.0,
             WHITE,
         );
