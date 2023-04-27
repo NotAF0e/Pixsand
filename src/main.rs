@@ -42,7 +42,7 @@ impl Tile {
         }
     }
 
-    fn fall(
+    fn update_tile_pos(
         &mut self,
         tiles: &mut Vec<Vec<Tile>>,
         last_world_tiles: &mut Vec<Vec<Tile>>,
@@ -56,77 +56,31 @@ impl Tile {
         match tile_type {
             TileType::Air => {}
             TileType::Sand => {
-                if let Some(row) = tiles.get_mut(x) {
-                    let mut do_left_or_right = false;
+                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false);
 
-                    if let Some(tile_below) = row.get_mut(y + 1) {
-                        if self.filled != TileType::Air && tile_below.filled == TileType::Air {
-                            tile_below.filled = tile_type;
-                            tiles[x][y].is_falling = true;
-                            tiles[x][y].filled = TileType::Air;
-                        } else {
-                            do_left_or_right = true;
+                if !check {
+                    if rand::RandomRange::gen_range(0, 10) > 5 {
+                        if self.move_tile(tiles, tile_type, x, y, x - 1, y + 1, true) {
+                            self.move_tile(tiles, tile_type, x, y, x - 1, y + 1, false);
                         }
-                        if do_left_or_right {
-                            if rand::RandomRange::gen_range(0, 10) > 5 {
-                                if let Some(row_left) = tiles.get_mut(x - 1) {
-                                    if let Some(tile_below_left) = row_left.get_mut(y + 1) {
-                                        if self.filled != TileType::Air
-                                            && tile_below_left.filled == TileType::Air
-                                        {
-                                            tile_below_left.filled = tile_type;
-                                            tiles[x][y].filled = TileType::Air;
-                                        }
-                                    }
-                                }
-                            } else if let Some(row_right) = tiles.get_mut(x + 1) {
-                                if let Some(tile_below_right) = row_right.get_mut(y + 1) {
-                                    if self.filled != TileType::Air
-                                        && tile_below_right.filled == TileType::Air
-                                    {
-                                        tile_below_right.filled = tile_type;
-                                        tiles[x][y].filled = TileType::Air;
-                                    }
-                                }
-                            }
+                    } else {
+                        if self.move_tile(tiles, tile_type, x, y, x + 1, y + 1, true) {
+                            self.move_tile(tiles, tile_type, x, y, x + 1, y + 1, false);
                         }
                     }
                 }
             }
             TileType::Water => {
-                if let Some(row) = tiles.get_mut(x) {
-                    let mut do_left_or_right = false;
+                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false);
 
-                    if let Some(tile_below) = row.get_mut(y + 1) {
-                        if self.filled != TileType::Air && tile_below.filled == TileType::Air {
-                            tile_below.filled = tile_type;
-                            tiles[x][y].is_falling = true;
-                            tiles[x][y].filled = TileType::Air;
-                        } else {
-                            do_left_or_right = true;
+                if !check {
+                    if rand::RandomRange::gen_range(0, 10) > 5 {
+                        if self.move_tile(tiles, tile_type, x, y, x - 1, y, true) {
+                            self.move_tile(tiles, tile_type, x, y, x - 1, y, false);
                         }
-                        if do_left_or_right {
-                            if rand::RandomRange::gen_range(0, 10) > 5 {
-                                if let Some(row_left) = tiles.get_mut(x - 1) {
-                                    if let Some(tile_below_left) = row_left.get_mut(y) {
-                                        if self.filled != TileType::Air
-                                            && tile_below_left.filled == TileType::Air
-                                        {
-                                            tile_below_left.filled = tile_type;
-                                            tiles[x][y].filled = TileType::Air;
-                                        }
-                                    }
-                                }
-                            } else if let Some(row_right) = tiles.get_mut(x + 1) {
-                                if let Some(tile_below_right) = row_right.get_mut(y) {
-                                    if self.filled != TileType::Air
-                                        && tile_below_right.filled == TileType::Air
-                                    {
-                                        tile_below_right.filled = tile_type;
-                                        tiles[x][y].filled = TileType::Air;
-                                    }
-                                }
-                            }
+                    } else {
+                        if self.move_tile(tiles, tile_type, x, y, x + 1, y, true) {
+                            self.move_tile(tiles, tile_type, x, y, x + 1, y, false);
                         }
                     }
                 }
@@ -134,13 +88,41 @@ impl Tile {
             TileType::Stone => {}
         }
     }
+
+    fn move_tile(
+        &mut self,
+        tiles: &mut Vec<Vec<Tile>>,
+        tile_type: TileType,
+        x: usize,
+        y: usize,
+        target_x: usize,
+        target_y: usize,
+        check: bool,
+    ) -> bool {
+        if target_x >= tiles.len() as usize {
+            return false;
+        }
+
+        if target_y >= tiles[0].len() as usize {
+            return false;
+        }
+
+        let target_tile = &mut tiles[target_x][target_y];
+
+        if target_tile.filled == TileType::Air {
+            if !check {
+                target_tile.filled = tile_type;
+                tiles[x][y].filled = TileType::Air;
+
+                tiles[x][y].is_falling = true;
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
-enum Direction {
-    Left,
-    Right,
-    Down,
-    Up,
-}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TileType {
     Air,
@@ -176,7 +158,7 @@ impl TileWorld {
         for (x_pos, row) in self.tiles.clone().iter_mut().enumerate() {
             for (y_pos, tile) in row.iter_mut().enumerate() {
                 if vec![TileType::Sand, TileType::Water].contains(&tile.filled) {
-                    tile.fall(
+                    tile.update_tile_pos(
                         &mut self.tiles,
                         &mut last_world_tiles,
                         tile.filled.clone(),
