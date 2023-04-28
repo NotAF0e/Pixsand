@@ -56,35 +56,54 @@ impl Tile {
         match tile_type {
             TileType::Air => {}
             TileType::Sand => {
-                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false);
+                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false).0;
 
                 if !check {
                     if rand::RandomRange::gen_range(0, 10) > 5 {
-                        if self.move_tile(tiles, tile_type, x, y, x - 1, y + 1, true) {
+                        if self.move_tile(tiles, tile_type, x, y, x - 1, y + 1, true).0 {
                             self.move_tile(tiles, tile_type, x, y, x - 1, y + 1, false);
                         }
                     } else {
-                        if self.move_tile(tiles, tile_type, x, y, x + 1, y + 1, true) {
+                        if self.move_tile(tiles, tile_type, x, y, x + 1, y + 1, true).0 {
                             self.move_tile(tiles, tile_type, x, y, x + 1, y + 1, false);
                         }
                     }
                 }
             }
             TileType::Water => {
-                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false);
+                let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false).0;
+                let mut dis = 1;
 
                 if !check {
-                    if rand::RandomRange::gen_range(0, 10) > 5 {
-                        if self.move_tile(tiles, tile_type, x, y, x - 1, y, true) {
-                            self.move_tile(tiles, tile_type, x, y, x - 1, y, false);
+                    let dir = rand::RandomRange::gen_range(0, 10) > 5;
+                    let mut dis_check = false;
+
+                    for _ in 1..4 {
+                        if dir {
+                            dis_check = self.move_tile(tiles, tile_type, x, y, x - dis, y, true).0;
+                        } else {
+                            dis_check = self.move_tile(tiles, tile_type, x, y, x + dis, y, true).0;
+                        }
+                        if dis_check {
+                            dis += 1;
+                            continue;
+                        } else {
+                            dis -= 1;
+                            break;
+                        }
+                    }
+                    if dir {
+                        if self.move_tile(tiles, tile_type, x, y, x - dis, y, true).0 {
+                            self.move_tile(tiles, tile_type, x, y, x - dis, y, false);
                         }
                     } else {
-                        if self.move_tile(tiles, tile_type, x, y, x + 1, y, true) {
-                            self.move_tile(tiles, tile_type, x, y, x + 1, y, false);
+                        if self.move_tile(tiles, tile_type, x, y, x + dis, y, true).0 {
+                            self.move_tile(tiles, tile_type, x, y, x + dis, y, false);
                         }
                     }
                 }
             }
+
             TileType::Stone => {}
         }
     }
@@ -98,13 +117,13 @@ impl Tile {
         target_x: usize,
         target_y: usize,
         check: bool,
-    ) -> bool {
+    ) -> (bool, TileType) {
         if target_x >= tiles.len() as usize {
-            return false;
+            return (false, tiles[x][y].filled);
         }
 
         if target_y >= tiles[0].len() as usize {
-            return false;
+            return (false, tiles[x][y].filled);
         }
 
         let target_tile = &mut tiles[target_x][target_y];
@@ -116,9 +135,9 @@ impl Tile {
 
                 tiles[x][y].is_falling = true;
             }
-            return true;
+            return (true, tiles[x][y].filled);
         } else {
-            return false;
+            return (false, tiles[x][y].filled);
         }
     }
 }
@@ -180,12 +199,12 @@ fn window_conf() -> Conf {
 }
 #[macroquad::main(window_conf)]
 async fn main() {
-    const TILE_SIZE: f32 = 5.0;
+    const TILE_SIZE: f32 = 3.0;
     let screen_width: usize = screen_width() as usize;
     let screen_height: usize = screen_height() as usize;
 
     let mut brush_type: Option<TileType> = Some(TileType::Sand);
-    let mut brush_size = 5.0; // Must be odd
+    let mut brush_size = 7.0; // Must be odd
 
     let mut world = TileWorld {
         tiles: vec![vec![Tile {
