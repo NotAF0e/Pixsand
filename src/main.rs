@@ -3,13 +3,20 @@ mod sim;
 use macroquad::input::KeyCode;
 use macroquad::prelude::*;
 use macroquad::ui::*;
+
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
 use std::{thread, time::*};
 
 fn construct_frame(world: &mut sim::TileWorld, texture: Texture2D, image: &mut Image) {
     // Construct tile image
     for (x, row) in world.tiles.iter().enumerate() {
         for (y, tile) in row.iter().enumerate() {
-            image.set_pixel(x as u32, y as u32, tile.match_color());
+            if tile.is_falling {
+                image.set_pixel(x as u32, y as u32, Color::new(0.9, 0.0, 0.0, 1.0));
+            } else {
+                image.set_pixel(x as u32, y as u32, tile.match_color());
+            }
         }
     }
 
@@ -166,6 +173,11 @@ async fn main() {
             construct_frame(world, texture, &mut image);
             let construct_frame_time = &construct_frame_time.elapsed().as_secs_f32().to_string();
 
+            let x = downscalled_mouse_x as usize;
+            let y = downscalled_mouse_y as usize;
+
+            let selected_tile: &mut sim::Tile = world.tiles.get_mut(x).unwrap().get_mut(y).unwrap();
+
             // Draw fps and rendering time text
             let frame_time: &str = &get_frame_time().to_string();
             let debug_text: Vec<String> = vec![
@@ -174,6 +186,7 @@ async fn main() {
                 "Construct frame: ".to_owned() + construct_frame_time,
                 "Brush selected: ".to_owned() + &brush_type.unwrap().to_string(),
                 "Brush size: ".to_owned() + &brush_size.to_string(),
+                selected_tile.to_string(),
             ];
             let mut text_displacement = 15.0;
             for text in debug_text {

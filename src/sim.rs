@@ -1,5 +1,4 @@
 use macroquad::prelude::*;
-
 use std::fmt;
 
 #[derive(Clone, PartialEq)]
@@ -15,6 +14,12 @@ pub struct Tile {
     pub color: Color,
 
     pub is_falling: bool,
+}
+impl fmt::Display for Tile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let display = (self.filled.to_string(), self.match_color(), self.is_falling);
+        write!(f, "{:?}", display)
+    }
 }
 
 impl Tile {
@@ -49,9 +54,6 @@ impl Tile {
         x: usize,
         y: usize,
     ) {
-        if tiles[x][y].filled == last_world_tiles[x][y].filled {
-            tiles[x][y].is_falling = false;
-        }
         match tile_type {
             TileType::Air => {}
             TileType::Sand => {
@@ -72,14 +74,13 @@ impl Tile {
             TileType::Water => {
                 let check = self.move_tile(tiles, tile_type, x, y, x, y + 1, false).0;
                 let dir = rand::RandomRange::gen_range(0, 10) > 5;
-
                 let mut dis = 1;
 
                 if !check {
                     if self.move_tile(tiles, tile_type, x, y, x - 1, y, true).0
                         || self.move_tile(tiles, tile_type, x, y, x + 1, y, true).0
                     {
-                        dis = rand::RandomRange::gen_range(2, 7);
+                        dis = rand::RandomRange::gen_range(2, 6);
                     }
                     if dir {
                         if self.move_tile(tiles, tile_type, x, y, x - dis, y, true).0 {
@@ -115,14 +116,12 @@ impl Tile {
             return (false, tiles[x][y].filled);
         }
 
-        let target_tile = &mut tiles[target_x][target_y];
+        let target_tile: &mut Tile = &mut tiles[target_x][target_y];
 
         if target_tile.filled == TileType::Air {
             if !check {
                 target_tile.filled = tile_type;
                 tiles[x][y].filled = TileType::Air;
-
-                tiles[x][y].is_falling = true;
             }
             return (true, tiles[x][y].filled);
         } else {
