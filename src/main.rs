@@ -1,200 +1,185 @@
 mod sim;
+use std::env;
 
-use macroquad::input::KeyCode;
-use macroquad::prelude::*;
-use macroquad::ui::*;
+use bevy::{
+    diagnostic::*,
+    input::{keyboard, mouse::MouseWheel},
+    prelude::*,
+    render::color::Color,
+    window::{PresentMode, Window},
+};
+use bevy_pixel_buffer::prelude::*;
+use sim::{Tile, TileType};
 
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
-use std::{thread, time::*};
+// fn handle_input(
+//     world: &mut sim::TileWorld,
+//     mut brush_type: Option<sim::TileType>,
+//     mut brush_size: f32,
+//     buttons: Res<Input<MouseButton>>,
+// ) -> (Option<sim::TileType>, f32) {
+//     if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
+//         let tile_type = if is_mouse_button_down(MouseButton::Left) {
+//             brush_type.clone().unwrap()
+//         } else {
+//             sim::TileType::Air
+//         };
+//         let brush_half_size = (brush_size / 2.0) as usize;
+//         for x_displace in 0..brush_size as usize {
+//             for y_displace in 0..brush_size as usize {
+//                 let x = downscalled_mouse_x as usize + x_displace - brush_half_size;
+//                 let y = downscalled_mouse_y as usize + y_displace - brush_half_size;
+//                 if let Some(row) = world.tiles.get_mut(x) {
+//                     if let Some(tile) = row.get_mut(y) {
+//                         tile.filled = tile_type;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     if mouse_wheel() > (0.0, 0.0) {
+//         brush_size += 1.0;
+//     } else if mouse_wheel() < (0.0, 0.0) && brush_size != 1.0 {
+//         brush_size -= 1.0;
+//     }
+//     if is_key_pressed(KeyCode::E) {
+//         brush_type = match brush_type.unwrap() {
+//             sim::TileType::Air => None,
+//             sim::TileType::Sand => Some(sim::TileType::Water),
+//             sim::TileType::Water => Some(sim::TileType::Stone),
+//             sim::TileType::Stone => Some(sim::TileType::Sand),
+//         };
+//     }
+//     return (brush_type, brush_size);
+// }
 
-fn construct_frame(world: &mut sim::TileWorld, texture: Texture2D, image: &mut Image) {
-    // Construct tile image
-    for (x, row) in world.tiles.iter().enumerate() {
-        for (y, tile) in row.iter().enumerate() {
-            if tile.is_falling {
-                image.set_pixel(x as u32, y as u32, Color::new(0.9, 0.0, 0.0, 1.0));
-            } else {
-                image.set_pixel(x as u32, y as u32, tile.match_color());
-            }
-        }
-    }
+#[derive(Resource)]
+struct BrushSize {
+    value: f32,
+}
 
-    // Draw tile image
-    texture.update(&image);
-    draw_texture_ex(
-        texture,
-        0.0,
-        0.0,
-        WHITE,
-        DrawTextureParams {
-            dest_size: Some(Vec2::new(screen_width() as f32, screen_height() as f32)),
+fn main() {
+    let size = PixelBufferSize {
+        size: UVec2::new(1920 / 4, 1080 / 4),
+        pixel_size: UVec2::new(4, 4),
+    };
+
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Pixsand".into(),
+                mode: bevy::window::WindowMode::BorderlessFullscreen,
+                present_mode: PresentMode::Immediate,
+                resizable: false,
+                ..Default::default()
+            }),
             ..Default::default()
-        },
-    );
+        }))
+        .add_plugins(PixelBufferPlugin)
+        .add_plugins(LogDiagnosticsPlugin::default())
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        .add_systems(Startup, pixel_buffer_setup(size))
+        .add_systems(Startup, startup)
+        .add_systems(Update, handle_input)
+        .add_systems(Update, update_frame)
+        .add_systems(Update, update_sim)
+        .run()
+}
+
+fn startup(mut commands: Commands) {
+    // World setup
+    let mut tile_world = sim::TileWorld {
+        tiles: vec![vec![sim::Tile {
+            filled: sim::TileType::Air,
+            color: Color::rgba(1.0, 1.0, 0.0, 1.0),
+        }]],
+        width: (1920 / 4) as usize,
+        height: (1080 / 4) as usize,
+    };
+    let tile_world = tile_world.create();
+    commands.insert_resource(tile_world.clone());
+
+    // Brush size and type setup
+    let brush_size = BrushSize { value: 8.0 };
+    let brush_type = TileType::Sand;
+    commands.insert_resource(brush_size);
+    commands.insert_resource(brush_type);
 }
 
 fn handle_input(
-    world: &mut sim::TileWorld,
-    mut brush_type: Option<sim::TileType>,
-    mut brush_size: f32,
-    downscalled_mouse_x: f32,
-    downscalled_mouse_y: f32,
-) -> (Option<sim::TileType>, f32) {
-    if is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right) {
-        let tile_type = if is_mouse_button_down(MouseButton::Left) {
-            brush_type.clone().unwrap()
-        } else {
-            sim::TileType::Air
+    mut tile_world: ResMut<sim::TileWorld>,
+    mouse_buttons: Res<Input<MouseButton>>,
+    mut mouse_wheel: EventReader<MouseWheel>,
+    keys: Res<Input<KeyCode>>,
+    window: Query<&Window>,
+    mut brush_type: ResMut<TileType>,
+    mut brush_size: ResMut<BrushSize>,
+) {
+    let mouse_pos = window.single().cursor_position();
+
+    if let Some(mouse_position) = mouse_pos {
+        if mouse_buttons.pressed(MouseButton::Left) {
+            let tile_type = *brush_type;
+            modify_tiles(&mut tile_world, mouse_position, tile_type, &brush_size);
+        } else if mouse_buttons.pressed(MouseButton::Right) {
+            modify_tiles(&mut tile_world, mouse_position, TileType::Air, &brush_size);
+        }
+    }
+
+    if keys.just_pressed(KeyCode::E) {
+        *brush_type = match *brush_type {
+            TileType::Air => TileType::Sand,
+            TileType::Sand => TileType::Water,
+            TileType::Water => TileType::Stone,
+            TileType::Stone => TileType::Sand, // Change this cycle as needed
         };
+    }
 
-        let brush_half_size = (brush_size / 2.0) as usize;
+    let scroll = mouse_wheel.read();
+    for ev in scroll {
+        if ev.y > 0.0 && brush_size.value < 20.0 {
+            brush_size.value += 1.0;
+        } else if ev.y < 0.0 && brush_size.value > 1.0 {
+            brush_size.value -= 1.0;
+        }
+    }
+}
 
-        for x_displace in 0..brush_size as usize {
-            for y_displace in 0..brush_size as usize {
-                let x = downscalled_mouse_x as usize + x_displace - brush_half_size;
-                let y = downscalled_mouse_y as usize + y_displace - brush_half_size;
+fn modify_tiles(
+    tile_world: &mut ResMut<sim::TileWorld>,
+    mouse_pos: Vec2,
+    tile_type: sim::TileType,
+    brush_size: &ResMut<BrushSize>,
+) {
+    let scalled_mouse_pos = mouse_pos / 4.0;
+    let brush_half_size = (brush_size.value / 2.0) as usize;
 
-                if let Some(row) = world.tiles.get_mut(x) {
-                    if let Some(tile) = row.get_mut(y) {
-                        tile.filled = tile_type;
-                    }
+    for x_displace in 0..brush_size.value as usize {
+        for y_displace in 0..brush_size.value as usize {
+            let x = (scalled_mouse_pos.x + x_displace as f32 - brush_half_size as f32)
+                .clamp(0.0, 1920.0 / 4.0) as usize;
+            let y = (scalled_mouse_pos.y + y_displace as f32 - brush_half_size as f32)
+                .clamp(0.0, 1080.0 / 4.0) as usize;
+
+            if let Some(row) = tile_world.tiles.get_mut(x) {
+                if let Some(tile) = row.get_mut(y) {
+                    tile.filled = tile_type;
                 }
             }
         }
     }
-    if mouse_wheel() > (0.0, 0.0) {
-        brush_size += 1.0;
-    } else if mouse_wheel() < (0.0, 0.0) && brush_size != 1.0 {
-        brush_size -= 1.0;
-    }
-    if is_key_pressed(KeyCode::E) {
-        brush_type = match brush_type.unwrap() {
-            sim::TileType::Air => None,
-            sim::TileType::Sand => Some(sim::TileType::Water),
-            sim::TileType::Water => Some(sim::TileType::Stone),
-            sim::TileType::Stone => Some(sim::TileType::Sand),
-        };
-    }
-
-    return (brush_type, brush_size);
 }
 
-#[derive(PartialEq)]
-enum GameState {
-    Menu,
-    LoadSave,
-    Playing,
+fn update_frame(mut pb: QueryPixelBuffer, tile_world: ResMut<sim::TileWorld>) {
+    pb.frame().per_pixel(|xy, _| {
+        Pixel::as_color(
+            tile_world.tiles[xy.x as usize][xy.y as usize]
+                .filled
+                .color()
+                .into(),
+        )
+    });
 }
 
-fn window_conf() -> Conf {
-    Conf {
-        window_title: "Pixsand".to_owned(),
-        fullscreen: true,
-        ..Default::default()
-    }
-}
-#[macroquad::main(window_conf)]
-async fn main() {
-    // Constant unchangable values
-    const TILE_SIZE: f32 = 3.0;
-
-    // Values changeable by player
-    let mut game_state: GameState = GameState::Menu;
-    let mut brush_type = Some(sim::TileType::Sand);
-    let mut brush_size = 7.0;
-
-    // World setup
-    let mut world = sim::TileWorld {
-        tiles: vec![vec![sim::Tile {
-            filled: sim::TileType::Air,
-            color: Color::new(0.0, 0.0, 0.0, 1.0),
-            is_falling: false,
-        }]],
-        width: (screen_width() / TILE_SIZE) as usize,
-        height: (screen_height() / TILE_SIZE) as usize,
-    };
-
-    let world = world.create();
-    let mut last_world = world.clone();
-
-    // Image setup for frame construction
-    let mut image = Image::gen_image_color(
-        screen_width() as u16 / TILE_SIZE as u16,
-        screen_height() as u16 / TILE_SIZE as u16,
-        Color::new(0.0, 0.0, 0.0, 1.0),
-    );
-    let texture = Texture2D::from_image(&image);
-    Texture2D::set_filter(&texture, FilterMode::Nearest);
-
-    loop {
-        if game_state == GameState::Menu {
-            root_ui().label(
-                vec2(
-                    (screen_width() / 2.0) as f32,
-                    (screen_height() / 2.0) as f32 + 100.0,
-                ),
-                "Menu",
-            );
-
-            if root_ui().button(
-                vec2(
-                    (screen_width() / 2.0) as f32,
-                    (screen_height() / 2.0) as f32,
-                ),
-                "Play",
-            ) {
-                thread::sleep(Duration::from_millis(100));
-                game_state = GameState::Playing;
-            }
-        } else if game_state == GameState::LoadSave {
-            todo!();
-        } else if game_state == GameState::Playing {
-            let (mouse_x, mouse_y) = mouse_position();
-            let (downscalled_mouse_x, downscalled_mouse_y) =
-                (mouse_x / TILE_SIZE, mouse_y / TILE_SIZE);
-
-            (brush_type, brush_size) = handle_input(
-                world,
-                brush_type,
-                brush_size,
-                downscalled_mouse_x,
-                downscalled_mouse_y,
-            );
-
-            // Updating the simulation
-            let update_sim_time = Instant::now();
-            world.update_sim(last_world.tiles);
-            last_world = world.clone();
-            let update_sim_time = &update_sim_time.elapsed().as_secs_f32().to_string();
-
-            // Contructing the frame for rendering
-            let construct_frame_time = Instant::now();
-            construct_frame(world, texture, &mut image);
-            let construct_frame_time = &construct_frame_time.elapsed().as_secs_f32().to_string();
-
-            let x = downscalled_mouse_x as usize;
-            let y = downscalled_mouse_y as usize;
-
-            let selected_tile: &mut sim::Tile = world.tiles.get_mut(x).unwrap().get_mut(y).unwrap();
-
-            // Draw fps and rendering time text
-            let frame_time: &str = &get_frame_time().to_string();
-            let debug_text: Vec<String> = vec![
-                frame_time.to_string(),
-                "Update sim: ".to_owned() + update_sim_time,
-                "Construct frame: ".to_owned() + construct_frame_time,
-                "Brush selected: ".to_owned() + &brush_type.unwrap().to_string(),
-                "Brush size: ".to_owned() + &brush_size.to_string(),
-                selected_tile.to_string(),
-            ];
-            let mut text_displacement = 15.0;
-            for text in debug_text {
-                draw_text(&text, 0.0, text_displacement, 25.0, WHITE);
-                text_displacement += 20.0;
-            }
-        }
-
-        next_frame().await
-    }
+fn update_sim(mut tile_world: ResMut<sim::TileWorld>) {
+    tile_world.update_sim();
 }
